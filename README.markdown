@@ -7,7 +7,7 @@ Summary
 -------
 
 WordEx is a word based pattern matching library. It is similar to Regexp.
-But while Regexp matches individual words, WordEx is built to match word sequences.
+But while Regexp matches individual characters, WordEx is built to match word sequences.
 
 
 
