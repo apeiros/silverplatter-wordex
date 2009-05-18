@@ -6,6 +6,10 @@
 
 
 
+require 'forwardable'
+
+
+
 module SilverPlatter
   class WordEx
     include Comparable
@@ -35,6 +39,72 @@ module SilverPlatter
 
       # In the definition string, a variable definition
       Variable  = /([+:*])?(\w+)(?:<([^>]+)>)?(?:@([\w+-]+))?(?:\{([\w,]+)\})?|(\S+)/
+    end
+
+    class MatchData
+      extend Forwardable
+
+      def_delegators :@matchdata,
+                       :captures,
+                       :begin,
+                       :captures,
+                       :end,
+                       :length,
+                       :match,
+                       :offset,
+                       :post_match,
+                       :pre_match,
+                       :pretty_print,
+                       :select,
+                       :size,
+                       :string,
+                       :to_a,
+                       :to_s
+
+      def initialize(matchdata, captures)
+        @params    = {}
+        @captures  = []
+        @matchdata = matchdata
+        captures.zip(matchdata.captures) do |capture, value|
+          if value then
+            if capture.scan then
+              processed = value.scan(capture.scan).map { |element|
+                if capture.typemap then
+                  capture.typemap.map(self, unwrap(element))
+                else
+                  unwrap(element)
+                end
+              }
+            else
+              processed = capture.typemap ? capture.typemap.map(self, unwrap(value)) : unwrap(value)
+            end
+            @params[capture.name] = processed
+            @captures            << processed
+          else
+            @params[capture.name] = nil
+            @captures            << nil
+          end
+        end
+      end
+      
+      def [](*key)
+        return @captures[*key] if key.size > 1
+        @params[*key] || @matchdata[*key]
+      end
+
+      def values_at(*keys)
+        keys.map { |key| self[key] }
+      end
+
+    private
+      # remove quotes if necessary and unescape
+      def unwrap(value)
+        value = case value[0,1]
+          when '"': value[1..-2].gsub(/\\./) { |m| ['"', "'", ' '].include?(m) ? m[1,1] : m }
+          when "'": value[1..-2].gsub(/\\./) { |m| ['"', "'", ' '].include?(m) ? m[1,1] : m }
+          else      value.gsub(/\\./) { |m| ['"', "'", ' '].include?(m) ? m[1,1] : m }
+        end
+      end
     end
 
     Capture = Struct.new("Capture", :name, :scan, :typemap)
@@ -69,25 +139,7 @@ module SilverPlatter
 
     def match(string)
       return nil unless match = @regexp.match(string)
-      params = {}
-      @captures.zip(match.captures) { |capture, value|
-        if value then
-          if capture.scan then
-            params[capture.name] = value.scan(capture.scan).map { |element|
-              if capture.typemap then
-                capture.typemap.map(self, unwrap(element))
-              else
-                unwrap(element)
-              end
-            }
-          else
-            params[capture.name] = capture.typemap ? capture.typemap.map(self, unwrap(value)) : unwrap(value)
-          end
-        else
-          params[capture.name] = nil
-        end
-      }
-      params
+      MatchData.new(match, @captures)
     rescue ValidationFailure
       nil
     rescue Exception => e
@@ -205,16 +257,6 @@ module SilverPlatter
         end
       }
     end
-
-    # remove quotes if necessary and unescape
-    def unwrap(value)
-      value = case value[0,1]
-        when '"': value[1..-2].gsub(/\\./) { |m| ['"', "'", ' '].include?(m) ? m[1,1] : m }
-        when "'": value[1..-2].gsub(/\\./) { |m| ['"', "'", ' '].include?(m) ? m[1,1] : m }
-        else      value.gsub(/\\./) { |m| ['"', "'", ' '].include?(m) ? m[1,1] : m }
-      end
-    end
-
 
 
 
